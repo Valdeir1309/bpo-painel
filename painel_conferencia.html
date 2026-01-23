@@ -272,8 +272,52 @@
         // CARREGAR DADOS DO OMIE (FORNECEDORES, CATEGORIAS, CONTAS)
         // ==========================================
 
+        // Resetar todos os selects para valor vazio
+        function resetarSelects() {
+            document.getElementById('edit_fornecedor').value = '';
+            document.getElementById('edit_categoria').value = '';
+            document.getElementById('edit_conta_corrente').value = '';
+        }
+
+        // Popular select de fornecedores com dados do cache
+        function popularSelectFornecedores(fornecedores) {
+            const select = document.getElementById('edit_fornecedor');
+            select.innerHTML = '<option value="">Selecione o fornecedor...</option>';
+            fornecedores.forEach(f => {
+                const option = document.createElement('option');
+                option.value = f.codigo_omie;
+                option.textContent = `${f.razao_social || f.nome_fantasia} (${f.cnpj || 'Sem CNPJ'})`;
+                option.dataset.cnpj = f.cnpj || '';
+                select.appendChild(option);
+            });
+        }
+
+        // Popular select de categorias com dados do cache
+        function popularSelectCategorias(categorias) {
+            const select = document.getElementById('edit_categoria');
+            select.innerHTML = '<option value="">Selecione a categoria...</option>';
+            categorias.forEach(c => {
+                const option = document.createElement('option');
+                option.value = c.codigo_omie;
+                option.textContent = c.descricao || c.descricao_padrao || c.codigo_omie;
+                select.appendChild(option);
+            });
+        }
+
+        // Popular select de contas correntes com dados do cache
+        function popularSelectContasCorrentes(contas) {
+            const select = document.getElementById('edit_conta_corrente');
+            select.innerHTML = '<option value="">Selecione a conta...</option>';
+            contas.forEach(c => {
+                const option = document.createElement('option');
+                option.value = c.id_omie;
+                const descricao = c.descricao || `${c.codigo_banco || ''} Ag:${c.agencia || ''} CC:${c.conta_corrente || ''}`;
+                option.textContent = descricao;
+                select.appendChild(option);
+            });
+        }
+
         // Carregar fornecedores do cliente
-        // Tabela: fornecedores | Campo código: codigo_omie (bigint)
         async function carregarFornecedores(clienteId) {
             const select = document.getElementById('edit_fornecedor');
             const loading = document.getElementById('loading_fornecedor');
@@ -295,17 +339,7 @@
                 const fornecedores = await response.json();
                 cacheClienteAtual.fornecedores = fornecedores;
                 
-                select.innerHTML = '<option value="">Selecione o fornecedor...</option>';
-                fornecedores.forEach(f => {
-                    const option = document.createElement('option');
-                    option.value = f.codigo_omie;
-                    option.textContent = `${f.razao_social || f.nome_fantasia} (${f.cnpj || 'Sem CNPJ'})`;
-                    option.dataset.cnpj = f.cnpj || '';
-                    select.appendChild(option);
-                });
-                
-                // Tentar selecionar automaticamente pelo CNPJ do cedente
-                autoSelecionarFornecedor();
+                popularSelectFornecedores(fornecedores);
                 
             } catch (error) {
                 console.error('Erro ao carregar fornecedores:', error);
@@ -316,7 +350,6 @@
         }
 
         // Carregar categorias do cliente
-        // Tabela: categorias | Campo código: codigo_omie (varchar)
         async function carregarCategorias(clienteId) {
             const select = document.getElementById('edit_categoria');
             const loading = document.getElementById('loading_categoria');
@@ -338,13 +371,7 @@
                 const categorias = await response.json();
                 cacheClienteAtual.categorias = categorias;
                 
-                select.innerHTML = '<option value="">Selecione a categoria...</option>';
-                categorias.forEach(c => {
-                    const option = document.createElement('option');
-                    option.value = c.codigo_omie;
-                    option.textContent = c.descricao || c.descricao_padrao || c.codigo_omie;
-                    select.appendChild(option);
-                });
+                popularSelectCategorias(categorias);
                 
             } catch (error) {
                 console.error('Erro ao carregar categorias:', error);
@@ -355,7 +382,6 @@
         }
 
         // Carregar contas correntes do cliente
-        // Tabela: contas_correntes | Campo código: id_omie (bigint)
         async function carregarContasCorrentes(clienteId) {
             const select = document.getElementById('edit_conta_corrente');
             const loading = document.getElementById('loading_conta');
@@ -377,14 +403,7 @@
                 const contas = await response.json();
                 cacheClienteAtual.contasCorrentes = contas;
                 
-                select.innerHTML = '<option value="">Selecione a conta...</option>';
-                contas.forEach(c => {
-                    const option = document.createElement('option');
-                    option.value = c.id_omie;
-                    const descricao = c.descricao || `${c.codigo_banco || ''} Ag:${c.agencia || ''} CC:${c.conta_corrente || ''}`;
-                    option.textContent = descricao;
-                    select.appendChild(option);
-                });
+                popularSelectContasCorrentes(contas);
                 
             } catch (error) {
                 console.error('Erro ao carregar contas correntes:', error);
@@ -417,9 +436,15 @@
 
         // Carregar todos os dados do cliente
         async function carregarDadosCliente(clienteId) {
-            // Verificar cache
+            // Verificar cache - se mesmo cliente, usar cache mas REPOPULAR os selects
             if (cacheClienteAtual.clienteId === clienteId) {
                 console.log('Usando dados do cache');
+                // Repopular os selects com dados do cache (reseta os valores selecionados)
+                popularSelectFornecedores(cacheClienteAtual.fornecedores);
+                popularSelectCategorias(cacheClienteAtual.categorias);
+                popularSelectContasCorrentes(cacheClienteAtual.contasCorrentes);
+                // Tentar auto-selecionar fornecedor pelo CNPJ
+                autoSelecionarFornecedor();
                 return;
             }
             
@@ -431,6 +456,9 @@
                 carregarCategorias(clienteId),
                 carregarContasCorrentes(clienteId)
             ]);
+            
+            // Tentar auto-selecionar fornecedor pelo CNPJ
+            autoSelecionarFornecedor();
         }
 
         // ==========================================
@@ -578,6 +606,7 @@
                 document.getElementById('modalDetalhe').classList.remove('hidden');
                 
                 // CARREGAR DADOS DO CLIENTE (Fornecedores, Categorias, Contas)
+                // Isso agora sempre reseta os selects mesmo usando cache
                 await carregarDadosCliente(boleto.cliente_id);
                 
             } catch (error) {
@@ -590,6 +619,8 @@
         function fecharModal() {
             document.getElementById('modalDetalhe').classList.add('hidden');
             boletoAtual = null;
+            // Resetar selects ao fechar
+            resetarSelects();
         }
 
         // Aprovar boleto
@@ -736,10 +767,10 @@
                 codigo_barras: document.getElementById('edit_codigo_barras').value,
                 sacado_nome: document.getElementById('edit_sacado_nome').value,
                 observacao: document.getElementById('edit_observacao').value,
-                // Dados do Omie (usando os campos corretos de cada tabela)
-                codigo_fornecedor: document.getElementById('edit_fornecedor').value,      // codigo_omie da tabela fornecedores
-                codigo_categoria: document.getElementById('edit_categoria').value,        // codigo_omie da tabela categorias
-                id_conta_corrente: document.getElementById('edit_conta_corrente').value   // id_omie da tabela contas_correntes
+                // Dados do Omie
+                codigo_fornecedor: document.getElementById('edit_fornecedor').value,
+                codigo_categoria: document.getElementById('edit_categoria').value,
+                id_conta_corrente: document.getElementById('edit_conta_corrente').value
             };
         }
 
