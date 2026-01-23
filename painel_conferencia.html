@@ -434,31 +434,65 @@
             }
         }
 
+        // Restaurar valores salvos dos selects (se existirem em dados_validados)
+        function restaurarValoresSalvos() {
+            if (!boletoAtual || !boletoAtual.dados_validados) return;
+            
+            const validados = boletoAtual.dados_validados;
+            
+            console.log('Restaurando valores de dados_validados:', validados);
+            
+            // Restaurar fornecedor
+            if (validados.codigo_fornecedor) {
+                const selectFornecedor = document.getElementById('edit_fornecedor');
+                selectFornecedor.value = validados.codigo_fornecedor;
+                console.log('Fornecedor restaurado:', validados.codigo_fornecedor, '- Valor no select:', selectFornecedor.value);
+            }
+            
+            // Restaurar categoria
+            if (validados.codigo_categoria) {
+                const selectCategoria = document.getElementById('edit_categoria');
+                selectCategoria.value = validados.codigo_categoria;
+                console.log('Categoria restaurada:', validados.codigo_categoria, '- Valor no select:', selectCategoria.value);
+            }
+            
+            // Restaurar conta corrente
+            if (validados.id_conta_corrente) {
+                const selectConta = document.getElementById('edit_conta_corrente');
+                selectConta.value = validados.id_conta_corrente;
+                console.log('Conta restaurada:', validados.id_conta_corrente, '- Valor no select:', selectConta.value);
+            }
+        }
+
         // Carregar todos os dados do cliente
         async function carregarDadosCliente(clienteId) {
             // Verificar cache - se mesmo cliente, usar cache mas REPOPULAR os selects
             if (cacheClienteAtual.clienteId === clienteId) {
                 console.log('Usando dados do cache');
-                // Repopular os selects com dados do cache (reseta os valores selecionados)
+                // Repopular os selects com dados do cache
                 popularSelectFornecedores(cacheClienteAtual.fornecedores);
                 popularSelectCategorias(cacheClienteAtual.categorias);
                 popularSelectContasCorrentes(cacheClienteAtual.contasCorrentes);
-                // Tentar auto-selecionar fornecedor pelo CNPJ
-                autoSelecionarFornecedor();
-                return;
+            } else {
+                cacheClienteAtual.clienteId = clienteId;
+                
+                // Carregar em paralelo
+                await Promise.all([
+                    carregarFornecedores(clienteId),
+                    carregarCategorias(clienteId),
+                    carregarContasCorrentes(clienteId)
+                ]);
             }
             
-            cacheClienteAtual.clienteId = clienteId;
-            
-            // Carregar em paralelo
-            await Promise.all([
-                carregarFornecedores(clienteId),
-                carregarCategorias(clienteId),
-                carregarContasCorrentes(clienteId)
-            ]);
-            
-            // Tentar auto-selecionar fornecedor pelo CNPJ
-            autoSelecionarFornecedor();
+            // PRIMEIRO: Tentar restaurar valores salvos anteriormente
+            if (boletoAtual.dados_validados) {
+                console.log('Boleto tem dados_validados, restaurando...');
+                restaurarValoresSalvos();
+            } else {
+                console.log('Boleto NÃO tem dados_validados, tentando auto-selecionar...');
+                // Se não tem dados salvos, tentar auto-selecionar fornecedor pelo CNPJ
+                autoSelecionarFornecedor();
+            }
         }
 
         // ==========================================
@@ -511,7 +545,8 @@
             }
 
             container.innerHTML = boletos.map(boleto => {
-                const dados = boleto.dados_extraidos || {};
+                // Usar dados_validados se existir, senão dados_extraidos
+                const dados = boleto.dados_validados || boleto.dados_extraidos || {};
                 const statusClass = getStatusClass(boleto.status);
                 const statusLabel = getStatusLabel(boleto.status);
                 
@@ -534,12 +569,12 @@
                                 <div class="text-sm text-gray-500">Venc: ${dados.data_vencimento || '-'}</div>
                             </div>
                         </div>
-                        ${dados.confianca ? `
+                        ${boleto.dados_extraidos?.confianca ? `
                             <div class="mt-2">
                                 <div class="w-full bg-gray-200 rounded-full h-1.5">
-                                    <div class="h-1.5 rounded-full ${dados.confianca >= 80 ? 'bg-green-500' : dados.confianca >= 50 ? 'bg-yellow-500' : 'bg-red-500'}" style="width: ${dados.confianca}%"></div>
+                                    <div class="h-1.5 rounded-full ${boleto.dados_extraidos.confianca >= 80 ? 'bg-green-500' : boleto.dados_extraidos.confianca >= 50 ? 'bg-yellow-500' : 'bg-red-500'}" style="width: ${boleto.dados_extraidos.confianca}%"></div>
                                 </div>
-                                <div class="text-xs text-gray-400 mt-1">Confiança IA: ${dados.confianca}%</div>
+                                <div class="text-xs text-gray-400 mt-1">Confiança IA: ${boleto.dados_extraidos.confianca}%</div>
                             </div>
                         ` : ''}
                     </div>
@@ -557,8 +592,9 @@
             let countConfianca = 0;
             
             boletos.forEach(b => {
-                if (b.status === 'pendente_conferencia' && b.dados_extraidos?.valor) {
-                    valorTotal += parseFloat(b.dados_extraidos.valor) || 0;
+                const dados = b.dados_validados || b.dados_extraidos || {};
+                if (b.status === 'pendente_conferencia' && dados.valor) {
+                    valorTotal += parseFloat(dados.valor) || 0;
                 }
                 if (b.dados_extraidos?.confianca) {
                     somaConfianca += b.dados_extraidos.confianca;
@@ -584,29 +620,34 @@
                 const [boleto] = await response.json();
                 boletoAtual = boleto;
                 
-                const dados = boleto.dados_extraidos || {};
+                console.log('=== BOLETO CARREGADO ===');
+                console.log('dados_extraidos:', boleto.dados_extraidos);
+                console.log('dados_validados:', boleto.dados_validados);
                 
-                // Preencher campos
+                // IMPORTANTE: Usar dados_validados se existir, senão dados_extraidos
+                const dados = boleto.dados_validados || boleto.dados_extraidos || {};
+                
+                // Preencher campos com dados (validados ou extraídos)
                 document.getElementById('edit_cedente_nome').value = dados.cedente_nome || '';
                 document.getElementById('edit_cedente_cnpj').value = dados.cedente_cnpj || '';
                 document.getElementById('edit_valor').value = dados.valor || '';
                 document.getElementById('edit_data_vencimento').value = dados.data_vencimento || '';
                 document.getElementById('edit_numero_documento').value = dados.numero_documento || '';
                 document.getElementById('edit_codigo_barras').value = dados.codigo_barras || '';
-                document.getElementById('edit_sacado_nome').value = dados.sacado_nome || '';
-                document.getElementById('edit_observacao').value = '';
+                document.getElementById('edit_sacado_nome').value = dados.sacado_nome || boleto.dados_extraidos?.sacado_nome || '';
+                document.getElementById('edit_observacao').value = dados.observacao || '';
                 
-                // Info
+                // Info (sempre usar dados_extraidos para confiança)
                 document.getElementById('info_cliente').textContent = boleto.clientes?.nome_fantasia || '-';
                 document.getElementById('info_arquivo').textContent = boleto.arquivo_nome || '-';
                 document.getElementById('info_recebido').textContent = formatarData(boleto.recebido_em);
-                document.getElementById('info_confianca').textContent = dados.confianca ? dados.confianca + '%' : '-';
+                document.getElementById('info_confianca').textContent = boleto.dados_extraidos?.confianca ? boleto.dados_extraidos.confianca + '%' : '-';
                 
                 // Mostrar modal
                 document.getElementById('modalDetalhe').classList.remove('hidden');
                 
                 // CARREGAR DADOS DO CLIENTE (Fornecedores, Categorias, Contas)
-                // Isso agora sempre reseta os selects mesmo usando cache
+                // Isso também vai restaurar os valores salvos se existirem
                 await carregarDadosCliente(boleto.cliente_id);
                 
             } catch (error) {
@@ -729,13 +770,17 @@
             
             const dadosCorrigidos = coletarDadosFormulario();
             
+            console.log('=== SALVANDO CORREÇÃO ===');
+            console.log('Dados a salvar:', dadosCorrigidos);
+            
             try {
                 const response = await fetch(`${SUPABASE_URL}/rest/v1/fila_processamento?id=eq.${boletoAtual.id}`, {
                     method: 'PATCH',
                     headers: {
                         'apikey': SUPABASE_KEY,
                         'Authorization': `Bearer ${SUPABASE_KEY}`,
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'Prefer': 'return=representation'
                     },
                     body: JSON.stringify({
                         status: 'corrigido',
@@ -746,9 +791,15 @@
                 });
                 
                 if (response.ok) {
-                    alert('💾 Correção salva! Boleto aguardando aprovação final.');
+                    const resultado = await response.json();
+                    console.log('Resposta do servidor:', resultado);
+                    alert('💾 Correção salva com sucesso!');
                     fecharModal();
                     carregarBoletos();
+                } else {
+                    const erro = await response.text();
+                    console.error('Erro do servidor:', erro);
+                    throw new Error('Erro ao salvar');
                 }
             } catch (error) {
                 console.error('Erro ao salvar:', error);
