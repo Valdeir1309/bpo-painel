@@ -1,1 +1,784 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conferência de Boletos - BPO Financeiro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        .status-pendente { background: #FEF3C7; color: #92400E; }
+        .status-aprovado { background: #D1FAE5; color: #065F46; }
+        .status-rejeitado { background: #FEE2E2; color: #991B1B; }
+        .status-corrigido { background: #DBEAFE; color: #1E40AF; }
+        .loading-spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">📋 Conferência de Boletos</h1>
+                <p class="text-sm text-gray-500">BPO Financeiro - Painel de Conferência</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <select id="filtroCliente" onchange="carregarBoletos()" class="border rounded-lg px-3 py-2 text-sm">
+                    <option value="">Todos os clientes</option>
+                </select>
+                <select id="filtroStatus" onchange="carregarBoletos()" class="border rounded-lg px-3 py-2 text-sm">
+                    <option value="pendente_conferencia">Pendentes</option>
+                    <option value="aprovado">Aprovados</option>
+                    <option value="rejeitado">Rejeitados</option>
+                    <option value="corrigido">Corrigidos</option>
+                    <option value="">Todos</option>
+                </select>
+                <button onclick="carregarBoletos()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm">
+                    🔄 Atualizar
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Stats -->
+    <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-xl p-4 shadow-sm border">
+                <div class="text-sm text-gray-500">Pendentes</div>
+                <div class="text-2xl font-bold text-yellow-600" id="statPendentes">0</div>
+            </div>
+            <div class="bg-white rounded-xl p-4 shadow-sm border">
+                <div class="text-sm text-gray-500">Aprovados Hoje</div>
+                <div class="text-2xl font-bold text-green-600" id="statAprovados">0</div>
+            </div>
+            <div class="bg-white rounded-xl p-4 shadow-sm border">
+                <div class="text-sm text-gray-500">Valor Total Pendente</div>
+                <div class="text-2xl font-bold text-blue-600" id="statValor">R$ 0,00</div>
+            </div>
+            <div class="bg-white rounded-xl p-4 shadow-sm border">
+                <div class="text-sm text-gray-500">Confiança Média IA</div>
+                <div class="text-2xl font-bold text-purple-600" id="statConfianca">0%</div>
+            </div>
+        </div>
+
+        <!-- Lista de Boletos -->
+        <div class="bg-white rounded-xl shadow-sm border">
+            <div class="p-4 border-b">
+                <h2 class="text-lg font-semibold text-gray-800">Boletos para Conferência</h2>
+            </div>
+            <div id="listaBoletos" class="divide-y">
+                <div class="p-8 text-center text-gray-500">
+                    Carregando boletos...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Detalhes/Edição -->
+    <div id="modalDetalhe" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="p-6 border-b flex justify-between items-center sticky top-0 bg-white">
+                <h3 class="text-xl font-bold text-gray-800">📄 Detalhes do Boleto</h3>
+                <button onclick="fecharModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+            <div class="p-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Dados do Documento -->
+                    <div>
+                        <h4 class="font-semibold text-gray-700 mb-4">📋 Dados Extraídos pela IA</h4>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-sm text-gray-500">Cedente/Beneficiário</label>
+                                <input type="text" id="edit_cedente_nome" class="w-full border rounded-lg px-3 py-2 mt-1">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-500">CNPJ Cedente</label>
+                                <input type="text" id="edit_cedente_cnpj" class="w-full border rounded-lg px-3 py-2 mt-1">
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-sm text-gray-500">Valor</label>
+                                    <input type="text" id="edit_valor" class="w-full border rounded-lg px-3 py-2 mt-1">
+                                </div>
+                                <div>
+                                    <label class="block text-sm text-gray-500">Vencimento</label>
+                                    <input type="text" id="edit_data_vencimento" class="w-full border rounded-lg px-3 py-2 mt-1">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-500">Nº Documento</label>
+                                <input type="text" id="edit_numero_documento" class="w-full border rounded-lg px-3 py-2 mt-1">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-500">Código de Barras</label>
+                                <input type="text" id="edit_codigo_barras" class="w-full border rounded-lg px-3 py-2 mt-1 text-xs">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Dados para Lançamento -->
+                    <div>
+                        <h4 class="font-semibold text-gray-700 mb-4">💰 Dados para Lançamento no Omie</h4>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-sm text-gray-500">Sacado/Pagador</label>
+                                <input type="text" id="edit_sacado_nome" class="w-full border rounded-lg px-3 py-2 mt-1 bg-gray-100" readonly>
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-500">
+                                    Fornecedor (Código Omie)
+                                    <span id="loading_fornecedor" class="loading-spinner hidden ml-2"></span>
+                                </label>
+                                <select id="edit_fornecedor" class="w-full border rounded-lg px-3 py-2 mt-1">
+                                    <option value="">Carregando fornecedores...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-500">
+                                    Categoria
+                                    <span id="loading_categoria" class="loading-spinner hidden ml-2"></span>
+                                </label>
+                                <select id="edit_categoria" class="w-full border rounded-lg px-3 py-2 mt-1">
+                                    <option value="">Carregando categorias...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-500">
+                                    Conta Corrente
+                                    <span id="loading_conta" class="loading-spinner hidden ml-2"></span>
+                                </label>
+                                <select id="edit_conta_corrente" class="w-full border rounded-lg px-3 py-2 mt-1">
+                                    <option value="">Carregando contas...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-500">Observação</label>
+                                <textarea id="edit_observacao" rows="2" class="w-full border rounded-lg px-3 py-2 mt-1"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Informações Adicionais -->
+                <div class="mt-6 p-4 bg-gray-50 rounded-lg">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                            <span class="text-gray-500">Cliente:</span>
+                            <span class="font-medium ml-1" id="info_cliente">-</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-500">Arquivo:</span>
+                            <span class="font-medium ml-1" id="info_arquivo">-</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-500">Recebido em:</span>
+                            <span class="font-medium ml-1" id="info_recebido">-</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-500">Confiança IA:</span>
+                            <span class="font-medium ml-1" id="info_confianca">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Botões de Ação -->
+                <div class="mt-6 flex flex-wrap gap-3 justify-end">
+                    <button onclick="rejeitarBoleto()" class="px-6 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium">
+                        ❌ Rejeitar
+                    </button>
+                    <button onclick="salvarCorrecao()" class="px-6 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-medium">
+                        💾 Salvar Correção
+                    </button>
+                    <button onclick="aprovarBoleto()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
+                        ✅ Aprovar e Lançar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Rejeição -->
+    <div id="modalRejeicao" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-md w-full p-6">
+            <h3 class="text-lg font-bold text-gray-800 mb-4">❌ Motivo da Rejeição</h3>
+            <textarea id="motivoRejeicao" rows="3" class="w-full border rounded-lg px-3 py-2" placeholder="Informe o motivo da rejeição..."></textarea>
+            <div class="mt-4 flex gap-3 justify-end">
+                <button onclick="fecharModalRejeicao()" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
+                <button onclick="confirmarRejeicao()" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Confirmar Rejeição</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configurações
+        const SUPABASE_URL = 'https://anlmxxxulbrqoyyigadc.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFubG14eHh1bGJycW95eWlnYWRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkxMDEyODEsImV4cCI6MjA4NDY3NzI4MX0.SoltPhZUIW80B7Sk20iGSThB_a6tvjRlfRIQUlaUA-s';
+        
+        let boletoAtual = null;
+        let clientes = [];
+        
+        // Cache para dados do cliente (evita múltiplas requisições)
+        let cacheClienteAtual = {
+            clienteId: null,
+            fornecedores: [],
+            categorias: [],
+            contasCorrentes: []
+        };
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', () => {
+            carregarClientes();
+            carregarBoletos();
+        });
+
+        // Carregar lista de clientes para o filtro
+        async function carregarClientes() {
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/clientes?ativo=eq.true&select=id,nome_fantasia`, {
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`
+                    }
+                });
+                clientes = await response.json();
+                
+                const select = document.getElementById('filtroCliente');
+                clientes.forEach(c => {
+                    const option = document.createElement('option');
+                    option.value = c.id;
+                    option.textContent = c.nome_fantasia;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Erro ao carregar clientes:', error);
+            }
+        }
+
+        // ==========================================
+        // CARREGAR DADOS DO OMIE (FORNECEDORES, CATEGORIAS, CONTAS)
+        // ==========================================
+
+        // Carregar fornecedores do cliente
+        async function carregarFornecedores(clienteId) {
+            const select = document.getElementById('edit_fornecedor');
+            const loading = document.getElementById('loading_fornecedor');
+            
+            select.innerHTML = '<option value="">Carregando...</option>';
+            loading.classList.remove('hidden');
+            
+            try {
+                const response = await fetch(
+                    `${SUPABASE_URL}/rest/v1/fornecedores?cliente_id=eq.${clienteId}&ativo=eq.true&select=codigo_omie,razao_social,nome_fantasia,cnpj&order=razao_social.asc`, 
+                    {
+                        headers: {
+                            'apikey': SUPABASE_KEY,
+                            'Authorization': `Bearer ${SUPABASE_KEY}`
+                        }
+                    }
+                );
+                
+                const fornecedores = await response.json();
+                cacheClienteAtual.fornecedores = fornecedores;
+                
+                select.innerHTML = '<option value="">Selecione o fornecedor...</option>';
+                fornecedores.forEach(f => {
+                    const option = document.createElement('option');
+                    option.value = f.codigo_omie;
+                    option.textContent = `${f.razao_social || f.nome_fantasia} (${f.cnpj || 'Sem CNPJ'})`;
+                    option.dataset.cnpj = f.cnpj || '';
+                    select.appendChild(option);
+                });
+                
+                // Tentar selecionar automaticamente pelo CNPJ do cedente
+                autoSelecionarFornecedor();
+                
+            } catch (error) {
+                console.error('Erro ao carregar fornecedores:', error);
+                select.innerHTML = '<option value="">Erro ao carregar</option>';
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
+        // Carregar categorias do cliente
+        async function carregarCategorias(clienteId) {
+            const select = document.getElementById('edit_categoria');
+            const loading = document.getElementById('loading_categoria');
+            
+            select.innerHTML = '<option value="">Carregando...</option>';
+            loading.classList.remove('hidden');
+            
+            try {
+                const response = await fetch(
+                    `${SUPABASE_URL}/rest/v1/categorias?cliente_id=eq.${clienteId}&ativo=eq.true&select=codigo_omie,descricao,descricao_padrao&order=descricao.asc`, 
+                    {
+                        headers: {
+                            'apikey': SUPABASE_KEY,
+                            'Authorization': `Bearer ${SUPABASE_KEY}`
+                        }
+                    }
+                );
+                
+                const categorias = await response.json();
+                cacheClienteAtual.categorias = categorias;
+                
+                select.innerHTML = '<option value="">Selecione a categoria...</option>';
+                categorias.forEach(c => {
+                    const option = document.createElement('option');
+                    option.value = c.codigo_omie;
+                    option.textContent = c.descricao || c.descricao_padrao || c.codigo_omie;
+                    select.appendChild(option);
+                });
+                
+            } catch (error) {
+                console.error('Erro ao carregar categorias:', error);
+                select.innerHTML = '<option value="">Erro ao carregar</option>';
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
+        // Carregar contas correntes do cliente
+        async function carregarContasCorrentes(clienteId) {
+            const select = document.getElementById('edit_conta_corrente');
+            const loading = document.getElementById('loading_conta');
+            
+            select.innerHTML = '<option value="">Carregando...</option>';
+            loading.classList.remove('hidden');
+            
+            try {
+                const response = await fetch(
+                    `${SUPABASE_URL}/rest/v1/contas_correntes?cliente_id=eq.${clienteId}&ativo=eq.true&select=codigo_omie,descricao,banco,agencia,conta&order=descricao.asc`, 
+                    {
+                        headers: {
+                            'apikey': SUPABASE_KEY,
+                            'Authorization': `Bearer ${SUPABASE_KEY}`
+                        }
+                    }
+                );
+                
+                const contas = await response.json();
+                cacheClienteAtual.contasCorrentes = contas;
+                
+                select.innerHTML = '<option value="">Selecione a conta...</option>';
+                contas.forEach(c => {
+                    const option = document.createElement('option');
+                    option.value = c.codigo_omie;
+                    const descricao = c.descricao || `${c.banco || ''} Ag:${c.agencia || ''} CC:${c.conta || ''}`;
+                    option.textContent = descricao;
+                    select.appendChild(option);
+                });
+                
+            } catch (error) {
+                console.error('Erro ao carregar contas correntes:', error);
+                select.innerHTML = '<option value="">Erro ao carregar</option>';
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
+        // Tentar selecionar fornecedor automaticamente pelo CNPJ
+        function autoSelecionarFornecedor() {
+            if (!boletoAtual) return;
+            
+            const cnpjCedente = boletoAtual.dados_extraidos?.cedente_cnpj;
+            if (!cnpjCedente) return;
+            
+            // Limpar CNPJ para comparação (só números)
+            const cnpjLimpo = cnpjCedente.replace(/\D/g, '');
+            
+            const select = document.getElementById('edit_fornecedor');
+            for (let option of select.options) {
+                const cnpjOption = (option.dataset.cnpj || '').replace(/\D/g, '');
+                if (cnpjOption && cnpjOption === cnpjLimpo) {
+                    select.value = option.value;
+                    console.log('Fornecedor selecionado automaticamente:', option.textContent);
+                    break;
+                }
+            }
+        }
+
+        // Carregar todos os dados do cliente
+        async function carregarDadosCliente(clienteId) {
+            // Verificar cache
+            if (cacheClienteAtual.clienteId === clienteId) {
+                console.log('Usando dados do cache');
+                return;
+            }
+            
+            cacheClienteAtual.clienteId = clienteId;
+            
+            // Carregar em paralelo
+            await Promise.all([
+                carregarFornecedores(clienteId),
+                carregarCategorias(clienteId),
+                carregarContasCorrentes(clienteId)
+            ]);
+        }
+
+        // ==========================================
+        // FUNÇÕES DE BOLETOS
+        // ==========================================
+
+        // Carregar boletos
+        async function carregarBoletos() {
+            const clienteId = document.getElementById('filtroCliente').value;
+            const status = document.getElementById('filtroStatus').value;
+            
+            let url = `${SUPABASE_URL}/rest/v1/fila_processamento?select=*,clientes(nome_fantasia)&order=recebido_em.desc`;
+            
+            if (clienteId) url += `&cliente_id=eq.${clienteId}`;
+            if (status) url += `&status=eq.${status}`;
+
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`
+                    }
+                });
+                const boletos = await response.json();
+                
+                renderizarBoletos(boletos);
+                atualizarEstatisticas(boletos);
+            } catch (error) {
+                console.error('Erro ao carregar boletos:', error);
+                document.getElementById('listaBoletos').innerHTML = `
+                    <div class="p-8 text-center text-red-500">
+                        Erro ao carregar boletos. Tente novamente.
+                    </div>
+                `;
+            }
+        }
+
+        // Renderizar lista de boletos
+        function renderizarBoletos(boletos) {
+            const container = document.getElementById('listaBoletos');
+            
+            if (boletos.length === 0) {
+                container.innerHTML = `
+                    <div class="p-8 text-center text-gray-500">
+                        <div class="text-4xl mb-2">📭</div>
+                        Nenhum boleto encontrado com os filtros selecionados.
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = boletos.map(boleto => {
+                const dados = boleto.dados_extraidos || {};
+                const statusClass = getStatusClass(boleto.status);
+                const statusLabel = getStatusLabel(boleto.status);
+                
+                return `
+                    <div class="p-4 hover:bg-gray-50 cursor-pointer card-hover transition-all" onclick="abrirDetalhe('${boleto.id}')">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="font-semibold text-gray-800">${dados.cedente_nome || 'Cedente não identificado'}</span>
+                                    <span class="px-2 py-0.5 rounded-full text-xs ${statusClass}">${statusLabel}</span>
+                                </div>
+                                <div class="text-sm text-gray-500">
+                                    ${boleto.clientes?.nome_fantasia || 'Cliente'} • 
+                                    ${boleto.arquivo_nome || 'Arquivo'} • 
+                                    Recebido ${formatarData(boleto.recebido_em)}
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-bold text-gray-800">${formatarMoeda(dados.valor)}</div>
+                                <div class="text-sm text-gray-500">Venc: ${dados.data_vencimento || '-'}</div>
+                            </div>
+                        </div>
+                        ${dados.confianca ? `
+                            <div class="mt-2">
+                                <div class="w-full bg-gray-200 rounded-full h-1.5">
+                                    <div class="h-1.5 rounded-full ${dados.confianca >= 80 ? 'bg-green-500' : dados.confianca >= 50 ? 'bg-yellow-500' : 'bg-red-500'}" style="width: ${dados.confianca}%"></div>
+                                </div>
+                                <div class="text-xs text-gray-400 mt-1">Confiança IA: ${dados.confianca}%</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Atualizar estatísticas
+        function atualizarEstatisticas(boletos) {
+            const pendentes = boletos.filter(b => b.status === 'pendente_conferencia').length;
+            const aprovados = boletos.filter(b => b.status === 'aprovado').length;
+            
+            let valorTotal = 0;
+            let somaConfianca = 0;
+            let countConfianca = 0;
+            
+            boletos.forEach(b => {
+                if (b.status === 'pendente_conferencia' && b.dados_extraidos?.valor) {
+                    valorTotal += parseFloat(b.dados_extraidos.valor) || 0;
+                }
+                if (b.dados_extraidos?.confianca) {
+                    somaConfianca += b.dados_extraidos.confianca;
+                    countConfianca++;
+                }
+            });
+
+            document.getElementById('statPendentes').textContent = pendentes;
+            document.getElementById('statAprovados').textContent = aprovados;
+            document.getElementById('statValor').textContent = formatarMoeda(valorTotal);
+            document.getElementById('statConfianca').textContent = countConfianca > 0 ? Math.round(somaConfianca / countConfianca) + '%' : '-';
+        }
+
+        // Abrir modal de detalhe
+        async function abrirDetalhe(id) {
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/fila_processamento?id=eq.${id}&select=*,clientes(nome_fantasia,omie_app_key)`, {
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`
+                    }
+                });
+                const [boleto] = await response.json();
+                boletoAtual = boleto;
+                
+                const dados = boleto.dados_extraidos || {};
+                
+                // Preencher campos
+                document.getElementById('edit_cedente_nome').value = dados.cedente_nome || '';
+                document.getElementById('edit_cedente_cnpj').value = dados.cedente_cnpj || '';
+                document.getElementById('edit_valor').value = dados.valor || '';
+                document.getElementById('edit_data_vencimento').value = dados.data_vencimento || '';
+                document.getElementById('edit_numero_documento').value = dados.numero_documento || '';
+                document.getElementById('edit_codigo_barras').value = dados.codigo_barras || '';
+                document.getElementById('edit_sacado_nome').value = dados.sacado_nome || '';
+                document.getElementById('edit_observacao').value = '';
+                
+                // Info
+                document.getElementById('info_cliente').textContent = boleto.clientes?.nome_fantasia || '-';
+                document.getElementById('info_arquivo').textContent = boleto.arquivo_nome || '-';
+                document.getElementById('info_recebido').textContent = formatarData(boleto.recebido_em);
+                document.getElementById('info_confianca').textContent = dados.confianca ? dados.confianca + '%' : '-';
+                
+                // Mostrar modal
+                document.getElementById('modalDetalhe').classList.remove('hidden');
+                
+                // CARREGAR DADOS DO CLIENTE (Fornecedores, Categorias, Contas)
+                await carregarDadosCliente(boleto.cliente_id);
+                
+            } catch (error) {
+                console.error('Erro ao carregar detalhe:', error);
+                alert('Erro ao carregar detalhes do boleto');
+            }
+        }
+
+        // Fechar modal
+        function fecharModal() {
+            document.getElementById('modalDetalhe').classList.add('hidden');
+            boletoAtual = null;
+        }
+
+        // Aprovar boleto
+        async function aprovarBoleto() {
+            if (!boletoAtual) return;
+            
+            // Validar campos obrigatórios
+            const fornecedor = document.getElementById('edit_fornecedor').value;
+            const categoria = document.getElementById('edit_categoria').value;
+            const contaCorrente = document.getElementById('edit_conta_corrente').value;
+            
+            if (!fornecedor) {
+                alert('⚠️ Selecione um fornecedor');
+                return;
+            }
+            if (!categoria) {
+                alert('⚠️ Selecione uma categoria');
+                return;
+            }
+            if (!contaCorrente) {
+                alert('⚠️ Selecione uma conta corrente');
+                return;
+            }
+            
+            const dadosCorrigidos = coletarDadosFormulario();
+            
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/fila_processamento?id=eq.${boletoAtual.id}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`,
+                        'Content-Type': 'application/json',
+                        'Prefer': 'return=representation'
+                    },
+                    body: JSON.stringify({
+                        status: 'aprovado',
+                        dados_validados: dadosCorrigidos,
+                        conferencia_data: new Date().toISOString(),
+                        conferencia_usuario: 'admin'
+                    })
+                });
+                
+                if (response.ok) {
+                    alert('✅ Boleto aprovado com sucesso!');
+                    fecharModal();
+                    carregarBoletos();
+                } else {
+                    throw new Error('Erro ao aprovar');
+                }
+            } catch (error) {
+                console.error('Erro ao aprovar:', error);
+                alert('Erro ao aprovar boleto. Tente novamente.');
+            }
+        }
+
+        // Rejeitar boleto
+        function rejeitarBoleto() {
+            document.getElementById('modalRejeicao').classList.remove('hidden');
+        }
+
+        function fecharModalRejeicao() {
+            document.getElementById('modalRejeicao').classList.add('hidden');
+        }
+
+        async function confirmarRejeicao() {
+            if (!boletoAtual) return;
+            
+            const motivo = document.getElementById('motivoRejeicao').value;
+            if (!motivo.trim()) {
+                alert('Informe o motivo da rejeição');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/fila_processamento?id=eq.${boletoAtual.id}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        status: 'rejeitado',
+                        conferencia_observacao: motivo,
+                        conferencia_data: new Date().toISOString(),
+                        conferencia_usuario: 'admin'
+                    })
+                });
+                
+                if (response.ok) {
+                    alert('Boleto rejeitado.');
+                    fecharModalRejeicao();
+                    fecharModal();
+                    carregarBoletos();
+                }
+            } catch (error) {
+                console.error('Erro ao rejeitar:', error);
+                alert('Erro ao rejeitar boleto.');
+            }
+        }
+
+        // Salvar correção
+        async function salvarCorrecao() {
+            if (!boletoAtual) return;
+            
+            const dadosCorrigidos = coletarDadosFormulario();
+            
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/fila_processamento?id=eq.${boletoAtual.id}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        status: 'corrigido',
+                        dados_validados: dadosCorrigidos,
+                        conferencia_data: new Date().toISOString(),
+                        conferencia_usuario: 'admin'
+                    })
+                });
+                
+                if (response.ok) {
+                    alert('💾 Correção salva! Boleto aguardando aprovação final.');
+                    fecharModal();
+                    carregarBoletos();
+                }
+            } catch (error) {
+                console.error('Erro ao salvar:', error);
+                alert('Erro ao salvar correção.');
+            }
+        }
+
+        // Coletar dados do formulário
+        function coletarDadosFormulario() {
+            return {
+                cedente_nome: document.getElementById('edit_cedente_nome').value,
+                cedente_cnpj: document.getElementById('edit_cedente_cnpj').value,
+                valor: parseFloat(document.getElementById('edit_valor').value) || 0,
+                data_vencimento: document.getElementById('edit_data_vencimento').value,
+                numero_documento: document.getElementById('edit_numero_documento').value,
+                codigo_barras: document.getElementById('edit_codigo_barras').value,
+                sacado_nome: document.getElementById('edit_sacado_nome').value,
+                observacao: document.getElementById('edit_observacao').value,
+                // Dados do Omie
+                codigo_fornecedor: document.getElementById('edit_fornecedor').value,
+                codigo_categoria: document.getElementById('edit_categoria').value,
+                id_conta_corrente: document.getElementById('edit_conta_corrente').value
+            };
+        }
+
+        // Funções auxiliares
+        function getStatusClass(status) {
+            const classes = {
+                'pendente_conferencia': 'status-pendente',
+                'aprovado': 'status-aprovado',
+                'rejeitado': 'status-rejeitado',
+                'corrigido': 'status-corrigido'
+            };
+            return classes[status] || 'bg-gray-100 text-gray-600';
+        }
+
+        function getStatusLabel(status) {
+            const labels = {
+                'pendente_conferencia': '⏳ Pendente',
+                'aprovado': '✅ Aprovado',
+                'rejeitado': '❌ Rejeitado',
+                'corrigido': '✏️ Corrigido',
+                'lancado': '🚀 Lançado',
+                'erro': '⚠️ Erro'
+            };
+            return labels[status] || status;
+        }
+
+        function formatarMoeda(valor) {
+            if (!valor) return 'R$ 0,00';
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
+        }
+
+        function formatarData(data) {
+            if (!data) return '-';
+            return new Date(data).toLocaleDateString('pt-BR', { 
+                day: '2-digit', 
+                month: '2-digit', 
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+    </script>
+</body>
+</html>
 
