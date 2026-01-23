@@ -48,7 +48,7 @@
                     <option value="">Todos</option>
                 </select>
                 <button onclick="carregarBoletos()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm">
-                     Atualizar
+                    🔄 Atualizar
                 </button>
             </div>
         </div>
@@ -92,14 +92,14 @@
     <div id="modalDetalhe" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div class="p-6 border-b flex justify-between items-center sticky top-0 bg-white">
-                <h3 class="text-xl font-bold text-gray-800"> Detalhes do Boleto</h3>
+                <h3 class="text-xl font-bold text-gray-800">📄 Detalhes do Boleto</h3>
                 <button onclick="fecharModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
             </div>
             <div class="p-6">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <!-- Dados do Documento -->
                     <div>
-                        <h4 class="font-semibold text-gray-700 mb-4"> Dados Extraídos pela IA</h4>
+                        <h4 class="font-semibold text-gray-700 mb-4">📋 Dados Extraídos pela IA</h4>
                         <div class="space-y-3">
                             <div>
                                 <label class="block text-sm text-gray-500">Cedente/Beneficiário</label>
@@ -132,7 +132,7 @@
 
                     <!-- Dados para Lançamento -->
                     <div>
-                        <h4 class="font-semibold text-gray-700 mb-4"> Dados para Lançamento no Omie</h4>
+                        <h4 class="font-semibold text-gray-700 mb-4">💰 Dados para Lançamento no Omie</h4>
                         <div class="space-y-3">
                             <div>
                                 <label class="block text-sm text-gray-500">Sacado/Pagador</label>
@@ -198,13 +198,13 @@
                 <!-- Botões de Ação -->
                 <div class="mt-6 flex flex-wrap gap-3 justify-end">
                     <button onclick="rejeitarBoleto()" class="px-6 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium">
-                         Rejeitar
+                        ❌ Rejeitar
                     </button>
                     <button onclick="salvarCorrecao()" class="px-6 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-medium">
-                         Salvar Correção
+                        💾 Salvar Correção
                     </button>
                     <button onclick="aprovarBoleto()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
-                         Aprovar e Lançar
+                        ✅ Aprovar e Lançar
                     </button>
                 </div>
             </div>
@@ -214,7 +214,7 @@
     <!-- Modal de Rejeição -->
     <div id="modalRejeicao" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-xl max-w-md w-full p-6">
-            <h3 class="text-lg font-bold text-gray-800 mb-4"> Motivo da Rejeição</h3>
+            <h3 class="text-lg font-bold text-gray-800 mb-4">❌ Motivo da Rejeição</h3>
             <textarea id="motivoRejeicao" rows="3" class="w-full border rounded-lg px-3 py-2" placeholder="Informe o motivo da rejeição..."></textarea>
             <div class="mt-4 flex gap-3 justify-end">
                 <button onclick="fecharModalRejeicao()" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
@@ -273,6 +273,7 @@
         // ==========================================
 
         // Carregar fornecedores do cliente
+        // Tabela: fornecedores | Campo código: codigo_omie (bigint)
         async function carregarFornecedores(clienteId) {
             const select = document.getElementById('edit_fornecedor');
             const loading = document.getElementById('loading_fornecedor');
@@ -282,7 +283,7 @@
             
             try {
                 const response = await fetch(
-                    `${SUPABASE_URL}/rest/v1/fornecedores?cliente_id=eq.${clienteId}&ativo=eq.true&select=id_omie,razao_social,nome_fantasia,cnpj&order=razao_social.asc`, 
+                    `${SUPABASE_URL}/rest/v1/fornecedores?cliente_id=eq.${clienteId}&ativo=eq.true&select=codigo_omie,razao_social,nome_fantasia,cnpj&order=razao_social.asc`, 
                     {
                         headers: {
                             'apikey': SUPABASE_KEY,
@@ -297,7 +298,7 @@
                 select.innerHTML = '<option value="">Selecione o fornecedor...</option>';
                 fornecedores.forEach(f => {
                     const option = document.createElement('option');
-                    option.value = f.id_omie;
+                    option.value = f.codigo_omie;
                     option.textContent = `${f.razao_social || f.nome_fantasia} (${f.cnpj || 'Sem CNPJ'})`;
                     option.dataset.cnpj = f.cnpj || '';
                     select.appendChild(option);
@@ -315,6 +316,7 @@
         }
 
         // Carregar categorias do cliente
+        // Tabela: categorias | Campo código: codigo_omie (varchar)
         async function carregarCategorias(clienteId) {
             const select = document.getElementById('edit_categoria');
             const loading = document.getElementById('loading_categoria');
@@ -324,7 +326,7 @@
             
             try {
                 const response = await fetch(
-                    `${SUPABASE_URL}/rest/v1/categorias?cliente_id=eq.${clienteId}&ativo=eq.true&select=id_omie,descricao&order=descricao.asc`, 
+                    `${SUPABASE_URL}/rest/v1/categorias?cliente_id=eq.${clienteId}&ativo=eq.true&select=codigo_omie,descricao,descricao_padrao&order=descricao.asc`, 
                     {
                         headers: {
                             'apikey': SUPABASE_KEY,
@@ -339,8 +341,8 @@
                 select.innerHTML = '<option value="">Selecione a categoria...</option>';
                 categorias.forEach(c => {
                     const option = document.createElement('option');
-                    option.value = c.id_omie;
-                    option.textContent = c.descricao || c.id_omie;
+                    option.value = c.codigo_omie;
+                    option.textContent = c.descricao || c.descricao_padrao || c.codigo_omie;
                     select.appendChild(option);
                 });
                 
@@ -353,6 +355,7 @@
         }
 
         // Carregar contas correntes do cliente
+        // Tabela: contas_correntes | Campo código: id_omie (bigint)
         async function carregarContasCorrentes(clienteId) {
             const select = document.getElementById('edit_conta_corrente');
             const loading = document.getElementById('loading_conta');
@@ -599,11 +602,11 @@
             const contaCorrente = document.getElementById('edit_conta_corrente').value;
             
             if (!fornecedor) {
-                alert(' Selecione um fornecedor');
+                alert('⚠️ Selecione um fornecedor');
                 return;
             }
             if (!categoria) {
-                alert(' Selecione uma categoria');
+                alert('⚠️ Selecione uma categoria');
                 return;
             }
             if (!contaCorrente) {
@@ -631,7 +634,7 @@
                 });
                 
                 if (response.ok) {
-                    alert(' Boleto aprovado com sucesso!');
+                    alert('✅ Boleto aprovado com sucesso!');
                     fecharModal();
                     carregarBoletos();
                 } else {
@@ -712,7 +715,7 @@
                 });
                 
                 if (response.ok) {
-                    alert(' Correção salva! Boleto aguardando aprovação final.');
+                    alert('💾 Correção salva! Boleto aguardando aprovação final.');
                     fecharModal();
                     carregarBoletos();
                 }
@@ -733,10 +736,10 @@
                 codigo_barras: document.getElementById('edit_codigo_barras').value,
                 sacado_nome: document.getElementById('edit_sacado_nome').value,
                 observacao: document.getElementById('edit_observacao').value,
-                // Dados do Omie
-                codigo_fornecedor: document.getElementById('edit_fornecedor').value,
-                codigo_categoria: document.getElementById('edit_categoria').value,
-                id_conta_corrente: document.getElementById('edit_conta_corrente').value
+                // Dados do Omie (usando os campos corretos de cada tabela)
+                codigo_fornecedor: document.getElementById('edit_fornecedor').value,      // codigo_omie da tabela fornecedores
+                codigo_categoria: document.getElementById('edit_categoria').value,        // codigo_omie da tabela categorias
+                id_conta_corrente: document.getElementById('edit_conta_corrente').value   // id_omie da tabela contas_correntes
             };
         }
 
@@ -753,12 +756,12 @@
 
         function getStatusLabel(status) {
             const labels = {
-                'pendente_conferencia': ' Pendente',
-                'aprovado': ' Aprovado',
-                'rejeitado': ' Rejeitado',
-                'corrigido': ' Corrigido',
-                'lancado': ' Lançado',
-                'erro': ' Erro'
+                'pendente_conferencia': '⏳ Pendente',
+                'aprovado': '✅ Aprovado',
+                'rejeitado': '❌ Rejeitado',
+                'corrigido': '✏️ Corrigido',
+                'lancado': '🚀 Lançado',
+                'erro': '⚠️ Erro'
             };
             return labels[status] || status;
         }
